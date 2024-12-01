@@ -1,0 +1,28 @@
+environment:
+  max_gpu_memory: 42949672960
+  max_cpu_memory: 274877906944
+  max_cpu_cores: 32
+  time_horizon: 20
+
+training:
+  total_episodes: 10
+  learning_rate: 0.0003
+  batch_size: 256
+  buffer_size: 1000000
+  learning_starts: 1000
+  tau: 0.005
+  gamma: 0.99
+  train_freq: 1
+  gradient_steps: 1
+  log_interval: 10 
+  save_interval: 100
+
+model:
+  hidden_sizes: [256, 256]
+  activation: "relu"
+  
+expert:
+  type: "sjf"
+  enabled: true
+  imitation_steps: 10000
+  epsilon: 0.2

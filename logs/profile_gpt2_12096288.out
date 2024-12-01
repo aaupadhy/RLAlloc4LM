@@ -1,9 +1,0 @@
-Running training profiling on cuda...
-Traceback (most recent call last):
-  File "/scratch/user/aaupadhy/college/DRL/RLAlloc4LM/slurm/../src/profile_gpt.py", line 67, in <module>
-    results = profile_gpt2_training(batch_sizes=args.batch_sizes, seq_lengths=args.seq_lengths)
-  File "/scratch/user/aaupadhy/college/DRL/RLAlloc4LM/slurm/../src/profile_gpt.py", line 15, in profile_gpt2_training
-    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-  File "/scratch/user/aaupadhy/.conda/envs/RLAlloc4LM/lib/python3.9/site-packages/transformers/tokenization_utils_base.py", line 2197, in from_pretrained
-    raise EnvironmentError(
-OSError: Can't load tokenizer for 'gpt2'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make sure 'gpt2' is the correct path to a directory containing all relevant files for a GPT2Tokenizer tokenizer.

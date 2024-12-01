@@ -1,0 +1,36 @@
+Using device: cuda
+Epoch 1/10
+  0%|          | 0/79 [00:00<?, ?it/s]  1%|▏         | 1/79 [00:20<26:34, 20.44s/it]  3%|▎         | 2/79 [00:21<11:51,  9.24s/it][W1201 17:23:38.247686480 CPUAllocator.cpp:249] Memory block of unknown size was allocated before the profiling started, profiler results will not include the deallocation event
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg       CPU Mem  Self CPU Mem      CUDA Mem  Self CUDA Mem    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                               aten::mm         0.12%       5.173ms         0.18%       7.396ms      37.353us        1.094s        62.09%        1.094s       5.525ms           0 b           0 b      15.04 Gb      15.04 Gb           198  
+                                                forward         0.00%       0.000us         0.00%       0.000us       0.000us     951.872ms        54.03%     951.872ms     475.936ms           0 b           0 b           0 b           0 b             2  
+    autograd::engine::evaluate_function: AddmmBackward0         0.08%       3.408ms         0.45%      18.661ms     194.385us       0.000us         0.00%     662.493ms       6.901ms           0 b           0 b      -8.35 Gb     -16.88 Gb            96  
+                                         AddmmBackward0         0.04%       1.586ms         0.25%      10.482ms     109.191us       0.000us         0.00%     652.498ms       6.797ms           0 b           0 b       8.53 Gb           0 b            96  
+                                                forward         6.49%     270.506ms        12.36%     515.506ms     257.753ms       0.000us         0.00%     574.155ms     287.077ms         960 b         576 b      35.02 Gb     -38.36 Gb             2  
+                                          ProfilerStep*         0.00%       0.000us         0.00%       0.000us       0.000us     347.661ms        19.73%     347.661ms     173.830ms           0 b           0 b           0 b           0 b             2  
+                                            aten::addmm         0.14%       5.857ms         0.18%       7.359ms      76.651us     311.444ms        17.68%     311.444ms       3.244ms           0 b           0 b      10.12 Gb      10.12 Gb            96  
+       autograd::engine::evaluate_function: MmBackward0         0.00%      52.570us         0.01%     484.552us     242.276us       0.000us         0.00%     300.565ms     150.282ms           0 b           0 b      -5.85 Gb      -6.23 Gb             2  
+                                            MmBackward0         0.00%      61.690us         0.01%     431.982us     215.991us       0.000us         0.00%     300.565ms     150.282ms           0 b           0 b     390.47 Mb           0 b             2  
+                                 ampere_sgemm_128x64_tn         0.00%       0.000us         0.00%       0.000us       0.000us     246.085ms        13.97%     246.085ms       9.465ms           0 b           0 b           0 b           0 b            26  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 4.170s
+Self CUDA time total: 1.762s
+
+  4%|▍         | 3/79 [00:23<07:20,  5.80s/it]  4%|▍         | 3/79 [00:29<12:15,  9.68s/it]
+Traceback (most recent call last):
+  File "/scratch/user/aaupadhy/college/DRL/RLAlloc4LM/slurm/../scripts/profile_gpt.py", line 135, in <module>
+    profile_training()
+  File "/scratch/user/aaupadhy/college/DRL/RLAlloc4LM/slurm/../scripts/profile_gpt.py", line 120, in profile_training
+    prof.step()
+  File "/scratch/user/aaupadhy/.conda/envs/RLAlloc4LM/lib/python3.9/site-packages/torch/profiler/profiler.py", line 776, in step
+    self._transit_action(prev_action, self.current_action)
+  File "/scratch/user/aaupadhy/.conda/envs/RLAlloc4LM/lib/python3.9/site-packages/torch/profiler/profiler.py", line 793, in _transit_action
+    action()
+  File "/scratch/user/aaupadhy/.conda/envs/RLAlloc4LM/lib/python3.9/site-packages/torch/profiler/profiler.py", line 787, in _trace_ready
+    self.on_trace_ready(self)
+  File "/scratch/user/aaupadhy/college/DRL/RLAlloc4LM/slurm/../scripts/profile_gpt.py", line 90, in trace_handler
+    f.write(p.export_chrome_trace())
+TypeError: export_chrome_trace() missing 1 required positional argument: 'path'
+srun: error: g071: task 0: Exited with exit code 1
