@@ -15,23 +15,12 @@ From Guo et al.:
 
 ## Installation
 ```bash
-git clone https://github.com/yourusername/RLAlloc4LM.git
+git clone https://github.com/aaupadhy/RLAlloc4LM.git
 cd RLAlloc4LM
 conda create -n RLAlloc4LM python=3.9
 conda activate RLAlloc4LM
 pip install -r requirements.txt
 ```
-
-## Dependencies
-- `torch>=1.9.0`
-- `numpy>=1.19.5`
-- `pandas>=1.3.0`
-- `matplotlib>=3.4.2`
-- `seaborn>=0.11.1`
-- `pyyaml>=5.4.1`
-- `tqdm>=4.61.0`
-- `psutil>=5.8.0`
-- `gputil>=1.4.0`
 
 ## Project Structure
 ```
