@@ -19,13 +19,23 @@ def get_device_properties(device=0):
     }
 
 def log_resource_usage():
-    gpu = GPUtil.getGPUs()[0]
-    return {
-        "gpu_util": gpu.memoryUtil * 100,
-        "gpu_memory": gpu.memoryUsed,
-        "cpu_util": psutil.cpu_percent(),
-        "memory_util": psutil.virtual_memory().percent
-    }
+    try:
+        gpu = GPUtil.getGPUs()[0]  
+        return {
+            "gpu_util": gpu.memoryUtil * 100, 
+            "gpu_memory": gpu.memoryUsed,
+            "cpu_util": psutil.cpu_percent(), 
+            "memory_util": psutil.virtual_memory().percent
+        }
+    except Exception as e:
+        print(f"Error fetching resource usage: {e}")
+        return {
+            "gpu_util": 0,
+            "gpu_memory": 0,
+            "cpu_util": 0,
+            "memory_util": 0
+        }
+
 
 def train_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -84,10 +94,34 @@ def profile_training():
     warmup_epochs = 2
 
     def trace_handler(p):
-        output = p.key_averages().table(sort_by="cuda_time_total", row_limit=10)
+        output = p.key_averages().table(sort_by="cpu_time_total", row_limit=-1)
+        metrics = p.key_averages()
+        events = []
+        
+        for evt in metrics:
+            event_data = {
+                'name': evt.key,
+                'ph': 'X',
+                'cat': 'kernel' if evt.device_time_total > 0 else 'cpu_op',
+                'pid': 0,
+                'tid': 0,
+                'ts': evt.cpu_time_total, 
+                'dur': evt.device_time_total if evt.device_time_total > 0 else evt.cpu_time_total,
+                'args': {
+                    'gpu_usage': evt.device_time_total, 
+                    'cpu_usage': evt.cpu_time_total,   
+                    'memory_usage': evt.device_memory_usage,
+                    'duration': evt.cpu_time_total + evt.device_time_total, 
+                }
+            }
+            events.append(event_data)
+            
+        trace_data["traceEvents"].extend(events)
         print(output)
-        with open(f"{output_dir}/trace_{timestamp}.json", "w") as f:
-            f.write(p.export_chrome_trace())
+
+        trace_file_path = f"{output_dir}/trace_latest.json"
+        with open(trace_file_path, 'w') as f:
+            json.dump(trace_data, f, indent=4)
 
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
@@ -133,3 +167,4 @@ def profile_training():
 
 if __name__ == "__main__":
     profile_training()
+

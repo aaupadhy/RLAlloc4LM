@@ -1,21 +1,22 @@
 environment:
   max_gpu_memory: 42949672960
-  max_cpu_memory: 274877906944
+  max_cpu_memory: 274877906944  
   max_cpu_cores: 32
-  time_horizon: 20
+  time_horizon: 39
+  max_steps: 1000
 
 training:
-  total_episodes: 10
-  learning_rate: 0.0003
-  batch_size: 256
+  total_episodes: 1000
+  learning_rate: 0.0005
+  batch_size: 128
   buffer_size: 1000000
-  learning_starts: 1000
-  tau: 0.005
+  learning_starts: 100
+  tau: 0.001
   gamma: 0.99
   train_freq: 1
   gradient_steps: 1
-  log_interval: 10 
-  save_interval: 100
+  log_interval: 1
+  save_interval: 5
 
 model:
   hidden_sizes: [256, 256]
@@ -24,5 +25,5 @@ model:
 expert:
   type: "sjf"
   enabled: true
-  imitation_steps: 10000
-  epsilon: 0.2
+  imitation_steps: 50000
+  epsilon: 0.3

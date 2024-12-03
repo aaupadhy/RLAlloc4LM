@@ -1,47 +1,115 @@
 import numpy as np
-from typing import List, Tuple
-import json
 import torch
+import json
+from typing import Dict
 
 class ExpertPolicy:
     def __init__(self, config):
         self.config = config
-        self.current_jobs = []
-        
+        self.trace_data = None
+        self.current_utilization = {'gpu': 0, 'cpu': 0, 'memory': 0}
+        self.resource_patterns = []
+
     def load_trace(self, trace_file: str):
         with open(trace_file, 'r') as f:
             self.trace_data = json.load(f)
-            
-    def _calculate_job_score(self, job_info: dict) -> float:
-        duration = job_info.get('dur', 0)
-        gpu_util = job_info.get('args', {}).get('gpu_usage', 0)
-        cpu_util = job_info.get('args', {}).get('cpu_usage', 0)
-        return duration * (gpu_util + cpu_util) / 2
+            self.process_trace_events()
 
-    def shortest_job_first(self, state: torch.Tensor) -> np.ndarray:
-        if not self.current_jobs:
-            return np.array([0.5, 0.5, 0.5])
+    def process_trace_events(self):
+        if not self.trace_data:
+            self.resource_patterns = []
+            return
             
-        jobs = sorted(self.current_jobs, key=self._calculate_job_score)
-        shortest_job = jobs[0]
+        events = self.trace_data.get('traceEvents', [])
+        self.resource_patterns = []
         
-        gpu_alloc = min(1.0, max(0.0, shortest_job.get('args', {}).get('gpu_usage', 0.5) * 1.2))
-        cpu_alloc = min(1.0, max(0.0, shortest_job.get('args', {}).get('cpu_usage', 0.5) * 1.2))
-        mem_alloc = min(1.0, max(0.0, (gpu_alloc + cpu_alloc) / 2 * 1.1))
-        
-        return np.array([gpu_alloc, mem_alloc, cpu_alloc])
-        
-    def highest_utilization(self, state: torch.Tensor) -> np.ndarray:
-        current_util = state[:, -1, 0].numpy()  # Get latest utilization
-        
-        gpu_alloc = min(1.0, max(0.0, float(current_util[0] * 1.3)))
-        mem_alloc = min(1.0, max(0.0, float(current_util[1] * 1.3)))
-        cpu_alloc = min(1.0, max(0.0, float(current_util[2] * 1.3)))
-        
-        return np.array([gpu_alloc, mem_alloc, cpu_alloc])
+        for evt in events:
+            if evt.get('cat') in ['kernel', 'cpu', 'memory']:
+                pattern = {
+                    'duration': evt.get('dur', 0),
+                    'gpu_util': evt.get('args', {}).get('gpu_usage', 0),
+                    'cpu_util': evt.get('args', {}).get('cpu_usage', 0),
+                    'memory': evt.get('args', {}).get('memory', 0),
+                    'type': evt.get('cat')
+                }
+                self.resource_patterns.append(pattern)
 
-    def get_demonstration(self, state: torch.Tensor) -> np.ndarray:
-        if self.config['expert']['type'] == 'sjf':
-            return self.shortest_job_first(state)
-        else:
-            return self.highest_utilization(state)
+    def get_demonstration(self, state):
+        if isinstance(state, torch.Tensor):
+            state = state.cpu().numpy()
+            
+        remaining_gpu = 1.0 - state[:10].max()
+        remaining_cpu = 1.0 - state[10:20].max()
+        remaining_mem = 1.0 - state[20:30].max()
+        
+        action = self.sjf_allocation(state) if np.random.random() < 0.5 else self.fcfs_allocation(state)
+        return np.clip(action, 0, 1)
+
+    def sjf_allocation(self, state):
+        if isinstance(state, torch.Tensor):
+            state = state.cpu().numpy()
+            
+        current_util = state[:10].mean()
+        remaining = 1.0 - current_util
+        
+        patterns = sorted(self.resource_patterns, key=lambda x: x['duration'])
+        if patterns:
+            pattern = patterns[0]
+            proportional_alloc = np.array([
+                pattern['gpu_util'] / (pattern['gpu_util'] + pattern['cpu_util'] + pattern['memory']),
+                pattern['cpu_util'] / (pattern['gpu_util'] + pattern['cpu_util'] + pattern['memory']),
+                pattern['memory'] / (pattern['gpu_util'] + pattern['cpu_util'] + pattern['memory'])
+            ])
+            return np.clip(proportional_alloc * remaining * 1.5, 0, remaining)
+            
+        return np.array([remaining * 0.3, remaining * 0.3, remaining * 0.3])
+
+    def fcfs_allocation(self, state):
+        if isinstance(state, torch.Tensor):
+            state = state.cpu().numpy()
+            
+        current_util = state[:10].mean() 
+        remaining = 1.0 - current_util
+        
+        if self.resource_patterns:
+            pattern = self.resource_patterns[0]
+            proportional_alloc = np.array([
+                pattern['gpu_util'] / (pattern['gpu_util'] + pattern['cpu_util'] + pattern['memory']),
+                pattern['cpu_util'] / (pattern['gpu_util'] + pattern['cpu_util'] + pattern['memory']), 
+                pattern['memory'] / (pattern['gpu_util'] + pattern['cpu_util'] + pattern['memory'])
+            ])
+            return np.clip(proportional_alloc * remaining * 1.2, 0, remaining)
+            
+        return np.array([remaining * 0.4, remaining * 0.4, remaining * 0.4])
+
+    def rr_allocation(self, state):
+        current_util = state[20:30].mean()
+        return np.array([
+            min(1.0, (1 - current_util) * 0.8),
+            min(1.0, (1 - current_util) * 0.8),
+            min(1.0, (1 - current_util) * 0.8)
+        ])
+
+    def _evaluate_action(self, state, action):
+        util_reward = np.mean(action)
+        efficiency = 1.0 - np.mean([
+            abs(self.current_utilization['gpu'] - action[0]),
+            abs(self.current_utilization['cpu'] - action[1]),
+            abs(self.current_utilization['memory'] - action[2])
+        ])
+        return util_reward + 2 * efficiency
+
+    def update_utilization(self, info: Dict):
+        self.current_utilization = {
+            'gpu': info.get('gpu_util', 0),
+            'cpu': info.get('cpu_util', 0),
+            'memory': info.get('mem_util', 0)
+        }
+        
+    def cuda(self):
+        self.device = 'cuda'
+        return self
+
+    def to(self, device):
+        self.device = device
+        return self

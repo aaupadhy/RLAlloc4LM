@@ -13,15 +13,17 @@ class MetricsLogger:
         self.metrics = defaultdict(list)
         self.start_time = time.time()
         self.episode_start = None
+        self.steps_in_episode = 0
         
     def start_episode(self):
         self.episode_start = time.time()
         self.episode_metrics = defaultdict(list)
+        self.steps_in_episode = 0
     
     def log_step(self, state, action, reward, next_state, info):
+        self.steps_in_episode += 1
         gpu = GPUtil.getGPUs()[0]
         
-        # Convert numpy arrays/tensors to float values for metrics
         if isinstance(state, np.ndarray):
             state = torch.from_numpy(state).float()
         elif isinstance(state, torch.Tensor):
@@ -48,7 +50,8 @@ class MetricsLogger:
             'action_mean': float(np.mean(action_np)),
             'action_std': float(np.std(action_np)),
             'state_mean': torch.mean(state).item(),
-            'state_std': torch.std(state).item()
+            'state_std': torch.std(state).item(),
+            'expert_used': info.get('expert_used', 0)
         }
         
         for k, v in metrics.items():
@@ -56,18 +59,16 @@ class MetricsLogger:
             
         return metrics
 
-    def end_episode(self, episode_num: int, total_reward: float, steps: int):
+    def end_episode(self, episode_num: int, total_reward: float, **kwargs):
         episode_time = time.time() - self.episode_start
-        
+
         episode_summary = {
             'episode': episode_num,
             'total_reward': total_reward,
-            'steps': steps,
             'duration': episode_time,
-            'avg_step_time': episode_time / steps
+            'steps': self.steps_in_episode
         }
-        
-        # Compute statistics over episode
+
         for k, v in self.episode_metrics.items():
             episode_summary.update({
                 f'{k}_mean': float(np.mean(v)),
@@ -75,9 +76,20 @@ class MetricsLogger:
                 f'{k}_min': float(np.min(v)),
                 f'{k}_max': float(np.max(v))
             })
-            
+
+        # Add any additional metrics passed via kwargs
+        for key, value in kwargs.items():
+            episode_summary[key] = value
+
         self.metrics['episodes'].append(episode_summary)
         return episode_summary
+
+        
+    def get_metrics(self):
+        return {
+            'episodes': self.metrics['episodes'],
+            'convergence': self.compute_convergence_metrics()
+        }
 
     def compute_convergence_metrics(self) -> Dict:
         rewards = [ep['total_reward'] for ep in self.metrics['episodes']]
@@ -122,3 +134,6 @@ class MetricsLogger:
                 'episodes': self.metrics['episodes'],
                 'convergence': self.compute_convergence_metrics()
             }, f)
+            
+    def load_metrics(self, metrics):
+        self.metrics = metrics

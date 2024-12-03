@@ -1,47 +1,64 @@
+import json
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import pandas as pd
-import json
 from pathlib import Path
-import numpy as np
+from tqdm import tqdm
 
-def plot_metrics():
-    with open('results/training_metrics.json', 'r') as f:
-        metrics = json.load(f)
-    
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 15))
-    
-    episodes = range(len(metrics['episode_rewards']))
-    rewards = metrics['episode_rewards']
-    
-    ax1.plot(episodes, rewards, label='Episode Reward')
-    ax1.set_xlabel('Episode')
-    ax1.set_ylabel('Reward')
-    ax1.set_title('Training Rewards')
-    ax1.grid(True)
-    
-    df = pd.DataFrame(metrics['convergence_metrics'])
-    window = 100
-    df['avg_reward_smooth'] = df['avg_reward'].rolling(window=window).mean()
-    
-    ax2.plot(df['episode'], df['avg_reward'], alpha=0.3, label=f'Average Reward')
-    ax2.plot(df['episode'], df['avg_reward_smooth'], label=f'Smoothed ({window} episodes)')
-    ax2.set_xlabel('Episode')
-    ax2.set_ylabel('Average Reward')
-    ax2.set_title('Convergence Analysis')
-    ax2.grid(True)
-    ax2.legend()
-    
-    data = pd.DataFrame(metrics['resource_utilization'])
-    if not data.empty:
-        sns.boxplot(data=data, ax=ax3)
-        ax3.set_xlabel('Resource Type')
-        ax3.set_ylabel('Utilization %')
-        ax3.set_title('Resource Utilization Distribution')
-    
-    plt.tight_layout()
-    plt.savefig('results/training_plots.png')
-    plt.close()
+def moving_average(data, window=10):
+    return np.convolve(data, np.ones(window)/window, mode='valid')
+
+def calculate_stats(data, window):
+    mean = moving_average(data, window)
+    std = np.array([np.std(data[max(0, i-window):min(i+1, len(data))]) 
+                   for i in range(len(mean))])
+    return mean, std
+
+def plot_comparison():
+   metrics = json.load(open('results/metrics_final.json'))
+   baseline = json.load(open('results/baseline_rewards.json'))
+   sac_only = json.load(open('results/sac_rewards.json'))
+
+   episodes = metrics['episodes']
+   window = 5
+   fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+
+   # Performance comparison  
+   rewards = [ep['total_reward'] for ep in episodes]
+   for data, label in [(rewards, 'SAC+IL'), (baseline, 'Baseline'), (sac_only, 'SAC Only')]:
+       mean, std = calculate_stats(np.array(data), window)
+       axes[0,0].plot(mean, label=label)
+       axes[0,0].fill_between(range(len(mean)), mean - std, mean + std, alpha=0.2)
+   axes[0,0].set_title('Performance Comparison')
+   axes[0,0].legend()
+
+   # Resource utilization
+   for metric, label in [('gpu_util_mean', 'GPU'), ('cpu_util_mean', 'CPU'), ('memory_util_mean', 'MEMORY')]:
+       data = np.array([ep[metric] for ep in episodes])
+       mean, std = calculate_stats(data, window)
+       axes[0,1].plot(mean, label=label)
+       axes[0,1].fill_between(range(len(mean)), mean - std, mean + std, alpha=0.2)
+   axes[0,1].set_title('Resource Utilization')
+   axes[0,1].legend()
+
+   # Training metrics
+   steps = [ep['steps'] for ep in episodes]
+   mean, std = calculate_stats(np.array(steps), window)
+   axes[1,0].plot(mean)
+   axes[1,0].fill_between(range(len(mean)), mean - std, mean + std, alpha=0.2)
+   axes[1,0].set_title('Steps per Episode')
+
+   losses = [ep.get('critic_loss_mean', 0) for ep in episodes] 
+   qvals = [ep.get('avg_q_value', 0) for ep in episodes]
+   for data, label in [(losses, 'Critic Loss'), (qvals, 'Q-Value')]:
+       mean, std = calculate_stats(np.array(data), window)
+       axes[1,1].plot(mean, label=label)
+   axes[1,1].set_title('Training Metrics')
+   axes[1,1].legend()
+
+   plt.tight_layout()
+   plt.savefig('results/performance_analysis.png')
 
 if __name__ == '__main__':
-    plot_metrics()
+    print("Started Plotting")
+    plot_comparison()

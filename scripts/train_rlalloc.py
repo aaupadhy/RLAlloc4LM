@@ -1,103 +1,102 @@
 import torch
 import yaml
-from pathlib import Path
 import json
 import os
+import random
 import numpy as np
+from tqdm import tqdm
 from env.resource_env import ResourceEnv
 from rlalloc.agents.sac import SAC
 from rlalloc.experts.baseline_heuristics import ExpertPolicy
-from rlalloc.utils.preprocessing import TraceProcessor
 from rlalloc.utils.metrics import MetricsLogger
 
-def setup_directories():
-    dirs = ['results', 'data/logs']
-    for dir_path in dirs:
-        os.makedirs(dir_path, exist_ok=True)
-
-def load_config():
-    with open('experiments/configs/config.yaml', 'r') as f:
-        return yaml.safe_load(f)
+def setup_paths(paths):
+    for path in paths:
+        os.makedirs(path, exist_ok=True)
 
 def train():
-    # Setup
-    setup_directories()
-    config = load_config()
+    torch.backends.cudnn.benchmark = True
+    torch.manual_seed(42)
+    np.random.seed(42)
+    random.seed(42)
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-
-    # Initialize environment
-    env = ResourceEnv(config['environment'])
-    state_dim = env.observation_space.shape
-    action_dim = env.action_space.shape[0]
     
-    # Initialize expert and data processor
-    trace_processor = TraceProcessor()
-    trace_processor.load_trace('data/logs/trace_latest.json')
-    expert = ExpertPolicy(config)
+    config = yaml.safe_load(open('experiments/configs/config.yaml'))
+    setup_paths(['results', 'data/logs'])
+    
+    env = ResourceEnv(config['environment']).to(device)
+    env.action_space.seed(42)
+    expert = ExpertPolicy(config).to(device)
     expert.load_trace('data/logs/trace_latest.json')
-
-    # Initialize agent and logger
-    agent = SAC(state_dim, action_dim, config)
+    
+    agent = SAC(env.observation_space.shape, env.action_space.shape[0], config).to(device)
     metrics_logger = MetricsLogger(config)
     
-    total_steps = 0
-    for episode in range(config['training']['total_episodes']):
+    pbar = tqdm(range(config['training']['total_episodes']))
+    episode_rewards = []
+    running_reward_mean = 0
+    running_reward_std = 1
+    
+    for episode in pbar:
         state = env.reset()
         metrics_logger.start_episode()
         episode_reward = 0
-        steps = 0
-        done = False
-        
-        while not done:
-            # Select action using epsilon-greedy strategy with expert
-            if np.random.random() < config['expert']['epsilon']:
-                action = expert.get_demonstration(state)
+        episode_q = 0
+        updates = 0
+
+        while True:
+            eps = max(0.1, min(0.99, 1.0 - episode / 100))
+            if np.random.random() < eps:
+                with torch.no_grad():
+                    action = torch.tensor(expert.get_demonstration(state), device=device)
             else:
-                action = agent.select_action(state)
-            
-            # Environment step
+                action = torch.tensor(agent.select_action(state), device=device)
+
             next_state, reward, done, info = env.step(action)
             agent.replay_buffer.push(state, action, reward, next_state, done)
             
-            # Update if enough samples
-            if len(agent.replay_buffer) > config['training']['batch_size']:
-                agent.update()
-            
-            # Logging
-            metrics_logger.log_step(state, action, reward, next_state, info)
-            
-            # Update state and counters
-            state = next_state
+            if len(agent.replay_buffer) > agent.batch_size:
+                actual_batch = min(agent.batch_size * 2, len(agent.replay_buffer))
+                update_info = agent.update(actual_batch)
+                if update_info and not np.isnan(update_info['q_value']):
+                    episode_q += update_info['q_value']
+                    updates += 1
+
             episode_reward += reward
-            steps += 1
-            total_steps += 1
+            state = next_state
+            
+            if done:
+                break
+
+        episode_rewards.append(episode_reward)
+
+        if updates > 0:
+                avg_q = episode_q / updates
+        else:
+            avg_q = 0
+        utilization_data = env.get_utilization() 
+        metrics_logger.end_episode(episode, 
+                                total_reward=episode_reward,
+                                avg_q_value=avg_q,
+                                gpu_util_mean=utilization_data['gpu_util_mean'],
+                                cpu_util_mean=utilization_data['cpu_util_mean'], 
+                                memory_util_mean=utilization_data['memory_util_mean'])
         
-        # End of episode logging
-        metrics_logger.end_episode(episode, episode_reward, steps)
-        
-        # Progress logging
-        if episode % config['training']['log_interval'] == 0:
-            print(f"Episode {episode}/{config['training']['total_episodes']}: "
-                  f"Reward={episode_reward:.2f}, Steps={steps}, "
-                  f"Total Steps={total_steps}")
-        
-        # Save checkpoints
+        pbar.set_description(f"Episode {episode} | Reward: {episode_reward:.2f} | Q-value: {avg_q:.2f} | Expert: {eps:.2f}")
+
         if episode % config['training']['save_interval'] == 0:
-            save_path = Path('results') / f'model_ep{episode}.pt'
-            agent.save(save_path)
-            metrics_logger.save(f'results/metrics_ep{episode}.json')
+            torch.save({
+                'episode': episode,
+                'agent_state_dict': agent.state_dict(),
+                'metrics': metrics_logger.get_metrics()
+            }, f'results/checkpoint_ep{episode}.pt')
     
-    # Save final metrics
-    metrics_logger.save('results/metrics_final.json')
-    return metrics_logger.metrics
+    final_metrics = metrics_logger.get_metrics()
+    with open('results/metrics_final.json', 'w') as f:
+        json.dump(final_metrics, f)
+
 
 if __name__ == '__main__':
-    try:
-        metrics = train()
-    except KeyboardInterrupt:
-        print("\nTraining interrupted. Saving final metrics...")
-        metrics_logger.save('results/metrics_interrupted.json')
-    except Exception as e:
-        print(f"Error during training: {e}")
-        raise
+    train()
