@@ -110,12 +110,16 @@ MIT License - see LICENSE file for details.
 
 ## Citation
 ```bibtex
-@inproceedings{guo2021learning,
-  title={Learning-based Resource Management for Cloud Networks},
-  author={Guo, Jintao and Zhang, Zhi and Zhou, Meng},
-  booktitle={IEEE INFOCOM},
-  year={2021}
-}
+@ARTICLE{9200455,
+  author={Guo, Wenxia and Tian, Wenhong and Ye, Yufei and Xu, Lingxiao and Wu, Kui},
+  journal={IEEE Internet of Things Journal}, 
+  title={Cloud Resource Scheduling With Deep Reinforcement Learning and Imitation Learning}, 
+  year={2021},
+  volume={8},
+  number={5},
+  pages={3576-3586},
+  keywords={Resource management;Cloud computing;Machine learning;Task analysis;Dynamic scheduling;Processor scheduling;Learning (artificial intelligence);Cloud resource scheduling;deep reinforcement learning (deep RL);imitation learning},
+  doi={10.1109/JIOT.2020.3025015}}
 ```
 
 ## Contributing
